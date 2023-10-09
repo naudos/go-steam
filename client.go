@@ -73,7 +73,7 @@ func NewManualClient() *Client {
 		events:      make(chan interface{}, 3),
 		writeBuf:    new(bytes.Buffer),
 		JobHandlers: make(map[uint64]func(*protocol.Packet) error),
-		manual: true,
+		manual:      true,
 	}
 }
 
@@ -90,22 +90,22 @@ func NewClient() *Client {
 }
 
 func (c *Client) AddDefaultHandlers() {
-	c.Auth = &Auth{client: c}
+	c.Auth = &Auth{Client: c}
 	c.RegisterPacketHandler(c.Auth) // Comment Out
 
-	c.Social = newSocial(c)
+	c.Social = NewSocial(c)
 	c.RegisterPacketHandler(c.Social)
 
-	c.Web = &Web{client: c}
+	c.Web = &Web{Client: c}
 	c.RegisterPacketHandler(c.Web)
 
-	c.Notifications = newNotifications(c)
+	c.Notifications = NewNotifications(c)
 	c.RegisterPacketHandler(c.Notifications)
 
-	c.Trading = &Trading{client: c}
+	c.Trading = &Trading{Client: c}
 	c.RegisterPacketHandler(c.Trading)
 
-	c.GC = newGC(c)
+	c.GC = NewGC(c)
 	c.RegisterPacketHandler(c.GC)
 }
 

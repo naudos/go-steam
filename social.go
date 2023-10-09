@@ -31,7 +31,7 @@ type Social struct {
 	client *Client
 }
 
-func newSocial(client *Client) *Social {
+func NewSocial(client *Client) *Social {
 	return &Social{
 		Friends: socialcache.NewFriendsList(),
 		Groups:  socialcache.NewGroupsList(),

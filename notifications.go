@@ -13,7 +13,7 @@ type Notifications struct {
 	client        *Client
 }
 
-func newNotifications(client *Client) *Notifications {
+func NewNotifications(client *Client) *Notifications {
 	return &Notifications{
 		make(map[NotificationType]uint),
 		client,

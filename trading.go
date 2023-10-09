@@ -16,7 +16,7 @@ import (
 // You'll receive a TradeProposedEvent when a friend proposes a trade. You can accept it with
 // the RespondRequest method. You can request a trade yourself with RequestTrade.
 type Trading struct {
-	client *Client
+	Client *Client
 }
 
 type TradeRequestId uint32
@@ -26,14 +26,14 @@ func (t *Trading) HandlePacket(packet *protocol.Packet) {
 	case steamlang.EMsg_EconTrading_InitiateTradeProposed:
 		msg := new(protobuf.CMsgTrading_InitiateTradeRequest)
 		packet.ReadProtoMsg(msg)
-		t.client.Emit(&TradeProposedEvent{
+		t.Client.Emit(&TradeProposedEvent{
 			RequestId: TradeRequestId(msg.GetTradeRequestId()),
 			Other:     steamid.SteamId(msg.GetOtherSteamid()),
 		})
 	case steamlang.EMsg_EconTrading_InitiateTradeResult:
 		msg := new(protobuf.CMsgTrading_InitiateTradeResponse)
 		packet.ReadProtoMsg(msg)
-		t.client.Emit(&TradeResultEvent{
+		t.Client.Emit(&TradeResultEvent{
 			RequestId: TradeRequestId(msg.GetTradeRequestId()),
 			Response:  steamlang.EEconTradeResponse(msg.GetResponse()),
 			Other:     steamid.SteamId(msg.GetOtherSteamid()),
@@ -46,7 +46,7 @@ func (t *Trading) HandlePacket(packet *protocol.Packet) {
 	case steamlang.EMsg_EconTrading_StartSession:
 		msg := new(protobuf.CMsgTrading_StartSession)
 		packet.ReadProtoMsg(msg)
-		t.client.Emit(&TradeSessionStartEvent{
+		t.Client.Emit(&TradeSessionStartEvent{
 			Other: steamid.SteamId(msg.GetOtherSteamid()),
 		})
 	}
@@ -55,7 +55,7 @@ func (t *Trading) HandlePacket(packet *protocol.Packet) {
 // Requests a trade. You'll receive a TradeResultEvent if the request fails or
 // if the friend accepted the trade.
 func (t *Trading) RequestTrade(other steamid.SteamId) {
-	t.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_EconTrading_InitiateTradeRequest, &protobuf.CMsgTrading_InitiateTradeRequest{
+	t.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_EconTrading_InitiateTradeRequest, &protobuf.CMsgTrading_InitiateTradeRequest{
 		OtherSteamid: proto.Uint64(uint64(other)),
 	}))
 }
@@ -69,7 +69,7 @@ func (t *Trading) RespondRequest(requestId TradeRequestId, accept bool) {
 		resp = 1
 	}
 
-	t.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_EconTrading_InitiateTradeResponse, &protobuf.CMsgTrading_InitiateTradeResponse{
+	t.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_EconTrading_InitiateTradeResponse, &protobuf.CMsgTrading_InitiateTradeResponse{
 		TradeRequestId: proto.Uint32(uint32(requestId)),
 		Response:       proto.Uint32(resp),
 	}))
@@ -77,7 +77,7 @@ func (t *Trading) RespondRequest(requestId TradeRequestId, accept bool) {
 
 // This cancels a request made with RequestTrade.
 func (t *Trading) CancelRequest(other steamid.SteamId) {
-	t.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_EconTrading_CancelTradeRequest, &protobuf.CMsgTrading_CancelTradeRequest{
+	t.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_EconTrading_CancelTradeRequest, &protobuf.CMsgTrading_CancelTradeRequest{
 		OtherSteamid: proto.Uint64(uint64(other)),
 	}))
 }

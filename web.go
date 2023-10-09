@@ -36,7 +36,7 @@ type Web struct {
 
 	webLoginKey string
 
-	client *Client
+	Client *Client
 }
 
 func (w *Web) HandlePacket(packet *protocol.Packet) {
@@ -65,7 +65,7 @@ func (w *Web) LogOn() {
 			}
 		}
 		if err != nil {
-			w.client.Emit(WebLogOnErrorEvent(err))
+			w.Client.Emit(WebLogOnErrorEvent(err))
 			return
 		}
 	}()
@@ -80,7 +80,7 @@ func (w *Web) apiLogOn() error {
 	cryptedLoginKey := cryptoutil.SymmetricEncrypt(ciph, []byte(w.webLoginKey))
 	data := make(url.Values)
 	data.Add("format", "json")
-	data.Add("steamid", strconv.FormatUint(w.client.SteamId().ToUint64(), 10))
+	data.Add("steamid", strconv.FormatUint(w.Client.SteamId().ToUint64(), 10))
 	data.Add("sessionkey", string(cryptedSessionKey))
 	data.Add("encrypted_loginkey", string(cryptedLoginKey))
 	resp, err := http.PostForm("https://api.steampowered.com/ISteamUserAuth/AuthenticateUser/v0001", data)
@@ -92,7 +92,7 @@ func (w *Web) apiLogOn() error {
 	if resp.StatusCode == 401 {
 		// our web login key has expired, request a new one
 		atomic.StoreUint32(&w.relogOnNonce, 1)
-		w.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientRequestWebAPIAuthenticateUserNonce, new(protobuf.CMsgClientRequestWebAPIAuthenticateUserNonce)))
+		w.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientRequestWebAPIAuthenticateUserNonce, new(protobuf.CMsgClientRequestWebAPIAuthenticateUserNonce)))
 		return nil
 	} else if resp.StatusCode != 200 {
 		return errors.New("steam.Web.apiLogOn: request failed with status " + resp.Status)
@@ -112,7 +112,7 @@ func (w *Web) apiLogOn() error {
 	w.SteamLogin = result.Authenticateuser.Token
 	w.SteamLoginSecure = result.Authenticateuser.TokenSecure
 
-	w.client.Emit(new(WebLoggedOnEvent))
+	w.Client.Emit(new(WebLoggedOnEvent))
 	return nil
 }
 
@@ -120,14 +120,14 @@ func (w *Web) handleNewLoginKey(packet *protocol.Packet) {
 	msg := new(protobuf.CMsgClientNewLoginKey)
 	packet.ReadProtoMsg(msg)
 
-	w.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientNewLoginKeyAccepted, &protobuf.CMsgClientNewLoginKeyAccepted{
+	w.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientNewLoginKeyAccepted, &protobuf.CMsgClientNewLoginKeyAccepted{
 		UniqueId: proto.Uint32(msg.GetUniqueId()),
 	}))
 
 	// number -> string -> bytes -> base64
 	w.SessionId = base64.StdEncoding.EncodeToString([]byte(strconv.FormatUint(uint64(msg.GetUniqueId()), 10)))
 
-	w.client.Emit(new(WebSessionIdEvent))
+	w.Client.Emit(new(WebSessionIdEvent))
 }
 
 func (w *Web) handleAuthNonceResponse(packet *protocol.Packet) {

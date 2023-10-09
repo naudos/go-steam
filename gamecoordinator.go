@@ -15,7 +15,7 @@ type GameCoordinator struct {
 	handlers []GCPacketHandler
 }
 
-func newGC(client *Client) *GameCoordinator {
+func NewGC(client *Client) *GameCoordinator {
 	return &GameCoordinator{
 		client:   client,
 		handlers: make([]GCPacketHandler, 0),
