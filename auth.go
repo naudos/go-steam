@@ -74,8 +74,8 @@ func (a *Auth) LogOn(details *LogOnDetails) {
 	if details.Username == "" {
 		panic("Username must be set!")
 	}
-	if details.Password == "" && details.LoginKey == "" {
-		panic("Password or LoginKey must be set!")
+	if details.Password == "" && details.LoginKey == "" && details.RefreshToken == "" {
+		panic("Password, LoginKey or RefreshToken must be set!")
 	}
 
 	logon := new(protobuf.CMsgClientLogon)
