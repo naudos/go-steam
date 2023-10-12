@@ -225,6 +225,9 @@ func (a *Auth) handleAuthSession(packet *protocol.Packet) error {
 				var code string
 				if a.Authenticator != nil {
 					code = a.Authenticator.GetCode(codeType)
+					if code == "" {
+						return // Do nothing
+					}
 				} else {
 					fmt.Println("Enter Code:")
 					_, _ = fmt.Scanln(&code)
