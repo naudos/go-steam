@@ -26,6 +26,17 @@ type steamDirectory struct {
 	isInitialized bool
 }
 
+type SteamDirectoryResponse struct {
+	Response Response `json:"response"`
+}
+
+type Response struct {
+	ServerList           []string `json:"serverlist"`
+	ServerListWebsockets []string `json:"serverlist_websockets"`
+	Result               int      `json:"result"`
+	Message              string   `json:"message"`
+}
+
 // Get server list from steam directory and save it for later
 func (sd *steamDirectory) Initialize() error {
 	sd.Lock()
@@ -36,13 +47,7 @@ func (sd *steamDirectory) Initialize() error {
 		return err
 	}
 	defer resp.Body.Close()
-	r := struct {
-		Response struct {
-			ServerList []string
-			Result     uint32
-			Message    string
-		}
-	}{}
+	var r SteamDirectoryResponse
 	if err = json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return err
 	}
@@ -69,8 +74,5 @@ func (sd *steamDirectory) GetRandomCM() *netutil.PortAddr {
 }
 
 func (sd *steamDirectory) IsInitialized() bool {
-	sd.RLock()
-	defer sd.RUnlock()
-	isInitialized := sd.isInitialized
-	return isInitialized
+	return sd.isInitialized
 }
