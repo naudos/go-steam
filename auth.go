@@ -131,8 +131,6 @@ func (a *Auth) LogOn(details *LogOnDetails) {
 	a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientLogon, logon))
 }
 
-// steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198133242371A30462466800D9838151053641393041
-
 func encryptPasword(pwd string, key *protobuf.CAuthentication_GetPasswordRSAPublicKey_Response) (string, error) {
 
 	var n big.Int
@@ -340,8 +338,6 @@ func (a *Auth) getRSAKey(accountName string) {
 	a.Client.JobMutex.Lock()
 	a.Client.JobHandlers[uint64(jobID)] = a.beginAuthSession
 	a.Client.JobMutex.Unlock()
-
-	//msg.SetTargetJobId(protocol.JobId(18446744073709551615))
 
 	a.Client.Send(msg)
 }
