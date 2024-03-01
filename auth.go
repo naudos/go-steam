@@ -131,6 +131,8 @@ func (a *Auth) LogOn(details *LogOnDetails) {
 	a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientLogon, logon))
 }
 
+// steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198133242371A30462466800D9838151053641393041
+
 func encryptPasword(pwd string, key *protobuf.CAuthentication_GetPasswordRSAPublicKey_Response) (string, error) {
 
 	var n big.Int
@@ -311,7 +313,7 @@ func (a *Auth) handlePollResponse(packet *protocol.Packet) error {
 	_ = packet.ReadProtoMsg(body)
 
 	if body.RefreshToken == nil {
-		return errors.New("PollError")
+		return errors.New("AuthSession PollError")
 	}
 
 	a.Details.AccessToken = *body.AccessToken
@@ -383,15 +385,6 @@ func (a *Auth) HandlePacket(packet *protocol.Packet) {
 		a.Client.Emit(a.HandleUpdateMachineAuth(packet))
 	case steamlang.EMsg_ClientAccountInfo:
 		a.Client.Emit(a.HandleAccountInfo(packet))
-
-	case steamlang.EMsg_ServiceMethodResponse:
-		a.Client.JobMutex.Lock()
-		fn := a.Client.JobHandlers[uint64(packet.TargetJobId)]
-		delete(a.Client.JobHandlers, uint64(packet.TargetJobId))
-		a.Client.JobMutex.Unlock()
-		if err := fn(packet); err != nil {
-			a.Client.Fatalf(err.Error())
-		}
 	}
 }
 
@@ -407,11 +400,14 @@ func (a *Auth) HandleLogOnResponse(packet *protocol.Packet) (*LoggedOnEvent, err
 	if result == steamlang.EResult_OK {
 		atomic.StoreInt32(&a.Client.sessionId, msg.Header.Proto.GetClientSessionid())
 		atomic.StoreUint64(&a.Client.steamId, msg.Header.Proto.GetSteamid())
-		if a.Client.Web != nil {
+		if a.Client.Web != nil && body.WebapiAuthenticateUserNonce != nil {
 			a.Client.Web.webLoginKey = *body.WebapiAuthenticateUserNonce
 		}
 
 		go a.Client.heartbeatLoop(time.Duration(body.GetHeartbeatSeconds()))
+		//if !a.Client.manual {
+		//	go a.Client.heartbeatLoop(time.Duration(body.GetHeartbeatSeconds()))
+		//}
 
 		return &LoggedOnEvent{
 			Result:                    steamlang.EResult(body.GetEresult()),

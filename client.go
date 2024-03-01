@@ -207,9 +207,9 @@ func (c *Client) ConnectToBind(addr *netutil.PortAddr, local *net.TCPAddr) error
 
 func (c *Client) Disconnect() {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
 
 	if c.Conn == nil {
+		c.mutex.Unlock()
 		return
 	}
 
@@ -220,6 +220,7 @@ func (c *Client) Disconnect() {
 	}
 	close(c.writeChan)
 	// c.Emit(&DisconnectedEvent{})
+	c.mutex.Unlock()
 }
 
 // Adds a message to the send queue. Modifications to the given message after
@@ -227,10 +228,13 @@ func (c *Client) Disconnect() {
 //
 // Writes to this client when not connected are ignored.
 func (c *Client) Send(msg protocol.IMsg) {
+	c.mutex.Lock()
 	if c.Conn == nil {
+		c.mutex.Unlock()
 		return
 	}
 	c.writeChan <- msg
+	c.mutex.Unlock()
 }
 
 func (c *Client) Write(msg protocol.IMsg) error {
@@ -316,6 +320,22 @@ func (c *Client) heartbeatLoop(seconds time.Duration) {
 }
 
 func (c *Client) handlePacket(packet *protocol.Packet) {
+
+	// Check Job Response
+	c.JobMutex.Lock()
+	fn := c.JobHandlers[uint64(packet.TargetJobId)]
+	if fn != nil {
+		delete(c.JobHandlers, uint64(packet.TargetJobId))
+		c.JobMutex.Unlock()
+
+		if err := fn(packet); err != nil {
+			c.Fatalf(err.Error())
+		}
+		return
+	} else {
+		c.JobMutex.Unlock()
+	}
+
 	switch packet.EMsg {
 	case steamlang.EMsg_ChannelEncryptRequest:
 		if err := c.HandleChannelEncryptRequest(packet); err != nil {
