@@ -116,7 +116,9 @@ func (c *Client) Events() <-chan interface{} {
 }
 
 func (c *Client) Emit(event interface{}) {
-	c.events <- event
+	if !c.manual {
+		c.events <- event
+	}
 }
 
 // Emits a FatalErrorEvent formatted with fmt.Errorf and disconnects.
@@ -151,8 +153,9 @@ func (c *Client) SessionId() int32 {
 
 func (c *Client) Connected() bool {
 	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	return c.Conn != nil
+	connected := c.Conn != nil
+	c.mutex.RUnlock()
+	return connected
 }
 
 // Connects to a random Steam server and returns its address.
