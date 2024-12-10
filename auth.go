@@ -55,6 +55,8 @@ type LogOnDetails struct {
 	AccessToken  string
 	RefreshToken string
 	GuardData    string
+
+	Anonymous bool
 }
 
 // Log on with the given details. You must always specify username and
@@ -71,19 +73,21 @@ type LogOnDetails struct {
 // After the event EMsg_ClientNewLoginKey is received you can use the LoginKey
 // to login instead of using the password.
 func (a *Auth) LogOn(details *LogOnDetails) {
-	if details.Username == "" {
+
+	anonymous := details.Anonymous
+
+	if details.Username == "" && !anonymous {
 		panic("Username must be set!")
 	}
-	if details.Password == "" && details.LoginKey == "" && details.RefreshToken == "" {
+	if details.Password == "" && details.LoginKey == "" && details.RefreshToken == "" && !anonymous {
 		panic("Password, LoginKey or RefreshToken must be set!")
 	}
 
 	logon := new(protobuf.CMsgClientLogon)
-	logon.AccountName = &details.Username
 
 	if details.RefreshToken != "" {
 		logon.AccessToken = &details.RefreshToken // Yes, RefreshToken as AccessToken
-	} else {
+	} else if !anonymous {
 		logon.Password = &details.Password
 		if details.AuthCode != "" {
 			logon.AuthCode = proto.String(details.AuthCode)
@@ -108,25 +112,31 @@ func (a *Auth) LogOn(details *LogOnDetails) {
 		logon.ShouldRememberPassword = proto.Bool(details.ShouldRememberPassword)
 	}
 
+	if anonymous {
+		logon.AnonUserTargetAccountName = proto.String("anonymous")
+
+		atomic.StoreUint64(&a.Client.steamId, uint64(steamid.NewIdAdv(0, 0, int32(steamlang.EUniverse_Public), int32(steamlang.EAccountType_AnonUser))))
+	} else {
+		logon.AccountName = &details.Username
+		logon.ClientLanguage = proto.String("english")
+		logon.MachineName = proto.String("DESKTOP-HELLO")
+		logon.MachineId = []byte{
+			0, 77, 101, 115, 115, 97, 103, 101, 79, 98, 106, 101, 99, 116, 0, 1, 66, 66, 51, 0, 52, 48, 56, 54, 49, 48, 48, 97, 54, 97, 50, 55, 102, 100, 100, 51, 49, 48, 98, 52, 50, 99, 56, 97, 102, 100, 54, 48, 51, 51, 97, 56, 51, 98, 53, 53, 49, 97, 48, 97, 0, 1, 70, 70, 50, 0, 100, 54, 49, 99, 100, 98, 97, 52, 49, 49, 55, 57, 57, 54, 97, 52, 57, 52, 52, 49, 98, 101, 49, 49, 99, 51, 98, 100, 98, 52, 101, 48, 99, 53, 51, 54, 54, 101, 99, 51, 0, 1, 51, 66, 51, 0, 99, 98, 97, 102, 56, 102, 52, 55, 56, 56, 50, 99, 102, 102, 101, 101, 52, 51, 101, 101, 49, 99, 97, 97, 99, 101, 98, 56, 97, 56, 101, 102, 99, 98, 53, 55, 54, 53, 53, 50, 0, 8, 8,
+		}
+
+		atomic.StoreUint64(&a.Client.steamId, uint64(steamid.NewIdAdv(0, 1, int32(steamlang.EUniverse_Public), int32(steamlang.EAccountType_Individual))))
+	}
+
 	logon.ClientOsType = proto.Uint32(16) // Windows 10
-	logon.ClientLanguage = proto.String("english")
 	logon.ProtocolVersion = proto.Uint32(steamlang.MsgClientLogon_CurrentProtocol)
+	logon.ObfuscatedPrivateIp = &protobuf.CMsgIPAddress{Ip: &protobuf.CMsgIPAddress_V4{V4: 2047164953}}
+	logon.DeprecatedObfustucatedPrivateIp = proto.Uint32(logon.ObfuscatedPrivateIp.GetV4())
 
 	// Other
 	logon.CellId = proto.Uint32(5)
 	logon.ClientPackageVersion = proto.Uint32(1771)
-	logon.SupportsRateLimitResponse = proto.Bool(true)
-	logon.MachineName = proto.String("DESKTOP-HELLO")
-	logon.MachineId = []byte{
-		0, 77, 101, 115, 115, 97, 103, 101, 79, 98, 106, 101, 99, 116, 0, 1, 66, 66, 51, 0, 52, 48, 56, 54, 49, 48, 48, 97, 54, 97, 50, 55, 102, 100, 100, 51, 49, 48, 98, 52, 50, 99, 56, 97, 102, 100, 54, 48, 51, 51, 97, 56, 51, 98, 53, 53, 49, 97, 48, 97, 0, 1, 70, 70, 50, 0, 100, 54, 49, 99, 100, 98, 97, 52, 49, 49, 55, 57, 57, 54, 97, 52, 57, 52, 52, 49, 98, 101, 49, 49, 99, 51, 98, 100, 98, 52, 101, 48, 99, 53, 51, 54, 54, 101, 99, 51, 0, 1, 51, 66, 51, 0, 99, 98, 97, 102, 56, 102, 52, 55, 56, 56, 50, 99, 102, 102, 101, 101, 52, 51, 101, 101, 49, 99, 97, 97, 99, 101, 98, 56, 97, 56, 101, 102, 99, 98, 53, 55, 54, 53, 53, 50, 0, 8, 8,
-	}
-
-	logon.ObfuscatedPrivateIp = &protobuf.CMsgIPAddress{Ip: &protobuf.CMsgIPAddress_V4{V4: 2047164953}}
-	logon.DeprecatedObfustucatedPrivateIp = proto.Uint32(logon.ObfuscatedPrivateIp.GetV4())
-
+	logon.SupportsRateLimitResponse = proto.Bool(!anonymous)
 	logon.Steam2TicketRequest = proto.Bool(false)
-
-	atomic.StoreUint64(&a.Client.steamId, uint64(steamid.NewIdAdv(0, 1, int32(steamlang.EUniverse_Public), int32(steamlang.EAccountType_Individual))))
 
 	a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientLogon, logon))
 }
