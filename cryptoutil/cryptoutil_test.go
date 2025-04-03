@@ -16,7 +16,7 @@ func TestCrypt(t *testing.T) {
 	if len(encrypted)%aes.BlockSize != 0 {
 		t.Fatalf("Encrypted text is not a multiple of the AES block size (got %v)", len(encrypted))
 	}
-	decrypted := SymmetricDecrypt(ciph, encrypted)
+	decrypted, _ := SymmetricDecrypt(ciph, encrypted)
 	if len([]byte("Hello World!")) != len(decrypted) {
 		t.Fatalf("src length (%v) does not match decrypted length (%v)!", len([]byte("Hello World!")), len(decrypted))
 	}

@@ -27,7 +27,7 @@ func SymmetricEncrypt(ciph cipher.Block, src []byte) []byte {
 
 // Decrypts data from the reader using AES/CBC/PKCS7 with an IV
 // prepended using AES/ECB/None. The src slice may not be used anymore.
-func SymmetricDecrypt(ciph cipher.Block, src []byte) []byte {
+func SymmetricDecrypt(ciph cipher.Block, src []byte) ([]byte, error) {
 	iv := src[:aes.BlockSize]
 	newECBDecrypter(ciph).CryptBlocks(iv, iv)
 
