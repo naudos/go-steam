@@ -415,7 +415,7 @@ func (d *MsgHdrProtoBuf) Deserialize(r io.Reader) error {
 	if d.HeaderLength < 0 {
 		return errors.New("negative header length")
 	}
-	buf1 := make([]byte, d.HeaderLength, d.HeaderLength)
+	buf1 := make([]byte, d.HeaderLength)
 	_, err = io.ReadFull(r, buf1)
 	if err != nil {
 		return err

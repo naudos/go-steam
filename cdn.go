@@ -199,13 +199,17 @@ func (c *Client) DownloadFile(appID, depotID uint32, key []byte, fileManifest *p
 			r, _ := download(u)
 			c, _ := io.ReadAll(r)
 
-			d := cryptoutil.SymmetricDecrypt(cipher, c)
-			v, e := decompressVZip(d)
+			d, e := cryptoutil.SymmetricDecrypt(cipher, c)
 			if e != nil {
-				err = e // Cant be bothered to retry / cancel
-			}
+				err = e
+			} else {
+				v, e := decompressVZip(d)
+				if e != nil {
+					err = e // Cant be bothered to retry / cancel
+				}
 
-			copy(b[*chunk.Offset:], v)
+				copy(b[*chunk.Offset:], v)
+			}
 
 			wg.Done()
 			<-ch

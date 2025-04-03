@@ -67,7 +67,7 @@ func (c *tcpConnection) Read() (*protocol.Packet, error) {
 		return nil, fmt.Errorf("Invalid connection magic! Expected %d, got %d!", tcpConnectionMagic, packetMagic)
 	}
 
-	buf := make([]byte, packetLen, packetLen)
+	buf := make([]byte, packetLen)
 	_, err = io.ReadFull(c.conn, buf)
 	if err == io.ErrUnexpectedEOF {
 		return nil, io.EOF
@@ -79,9 +79,13 @@ func (c *tcpConnection) Read() (*protocol.Packet, error) {
 	// Packets after ChannelEncryptResult are encrypted
 	c.cipherMutex.RLock()
 	if c.ciph != nil {
-		buf = cryptoutil.SymmetricDecrypt(c.ciph, buf)
+		buf, err = cryptoutil.SymmetricDecrypt(c.ciph, buf)
 	}
 	c.cipherMutex.RUnlock()
+
+	if err != nil {
+		return nil, err
+	}
 
 	return protocol.NewPacket(buf)
 }

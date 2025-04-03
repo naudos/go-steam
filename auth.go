@@ -376,8 +376,8 @@ func (a *Auth) HandlePacket(packet *protocol.Packet) {
 		l, err := a.HandleLogOnResponse(packet)
 		if err != nil {
 			a.Client.Fatalf(err.Error())
-		} else if e.(LoggedOnEvent).Result != steamlang.EResult_OK {
-			e = &LogOnFailedEvent{Result: e.(LoggedOnEvent).Result}
+		} else if l.Result != steamlang.EResult_OK {
+			e = &LogOnFailedEvent{Result: l.Result}
 		} else {
 			e = l
 		}
