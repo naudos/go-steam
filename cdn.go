@@ -40,7 +40,7 @@ func (c *Client) GetCDNAuthToken(appID, depotID uint32, host string) string {
 	return ""
 }
 
-func (c *Client) GetManifestRequestCode(appID, depotID uint32, manifestID uint64, appBranch, passwordHash *string) uint64 {
+func (c *Client) GetManifestRequestCode(appID, depotID uint32, manifestID uint64, appBranch, passwordHash *string) (uint64, error) {
 
 	req := &unified.CContentServerDirectory_GetManifestRequestCode_Request{
 		AppId:              &appID,
@@ -69,13 +69,22 @@ func (c *Client) GetManifestRequestCode(appID, depotID uint32, manifestID uint64
 
 	//msg.SetTargetJobId(protocol.JobId(18446744073709551615))
 
-	c.Send(msg)
-	return <-ch
+	err := c.Send(msg)
+	if err != nil {
+		c.JobMutex.Lock()
+		delete(c.JobHandlers, uint64(jobID))
+		c.JobMutex.Unlock()
+		return 0, err
+	}
+	return <-ch, nil
 }
 
 func (c *Client) GetManifest(appID, depotID uint32, manifestID uint64, appBranch, passwordHash *string) (*Manifest, error) {
 
-	reqCode := c.GetManifestRequestCode(appID, depotID, manifestID, appBranch, passwordHash)
+	reqCode, err := c.GetManifestRequestCode(appID, depotID, manifestID, appBranch, passwordHash)
+	if err != nil {
+		return nil, err
+	}
 
 	u, _ := url.ParseRequestURI(fmt.Sprintf("https://%s/depot/%d/manifest/%d/5/%d", "cache9-fra1.steamcontent.com", depotID, manifestID, reqCode))
 	reader, err := download(u)
@@ -135,7 +144,7 @@ outer:
 	return &manifest, nil
 }
 
-func (c *Client) GetDepotDecryptionKey(appID, depotID uint32) []byte {
+func (c *Client) GetDepotDecryptionKey(appID, depotID uint32) ([]byte, error) {
 
 	req := &protobuf.CMsgClientGetDepotDecryptionKey{
 		AppId:   &appID,
@@ -157,8 +166,14 @@ func (c *Client) GetDepotDecryptionKey(appID, depotID uint32) []byte {
 	}
 	c.JobMutex.Unlock()
 
-	c.Send(msg)
-	return <-ch
+	err := c.Send(msg)
+	if err != nil {
+		c.JobMutex.Lock()
+		delete(c.JobHandlers, uint64(jobID))
+		c.JobMutex.Unlock()
+		return nil, err
+	}
+	return <-ch, nil
 }
 
 func (c *Client) DownloadFile(appID, depotID uint32, key []byte, fileManifest *protobuf.ContentManifestPayload_FileMapping) ([]byte, error) {

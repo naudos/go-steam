@@ -230,14 +230,21 @@ func (c *Client) Disconnect() {
 // writing are not allowed (possible race conditions).
 //
 // Writes to this client when not connected are ignored.
-func (c *Client) Send(msg protocol.IMsg) {
+func (c *Client) Send(msg protocol.IMsg) error {
+
+	// Write directly if the client is in manual mode
+	if c.manual {
+		return c.Write(msg)
+	}
+
 	c.mutex.Lock()
 	if c.Conn == nil {
 		c.mutex.Unlock()
-		return
+		return nil
 	}
 	c.writeChan <- msg
 	c.mutex.Unlock()
+	return nil
 }
 
 func (c *Client) Write(msg protocol.IMsg) error {
@@ -258,14 +265,14 @@ func (c *Client) Write(msg protocol.IMsg) error {
 	err := msg.Serialize(c.writeBuf)
 	if err != nil {
 		c.writeBuf.Reset()
-		return fmt.Errorf("Error serializing message %v: %v", msg, err)
+		return fmt.Errorf("error serializing message %v: %v", msg, err)
 	}
 
 	// Write
 	err = c.Conn.Write(c.writeBuf.Bytes())
 	c.writeBuf.Reset()
 	if err != nil {
-		return fmt.Errorf("Error writing message %v: %v", msg, err)
+		return fmt.Errorf("error writing message %v: %v", msg, err)
 	}
 
 	return nil
@@ -317,7 +324,7 @@ func (c *Client) heartbeatLoop(seconds time.Duration) {
 		if !ok {
 			break
 		}
-		c.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientHeartBeat, new(protobuf.CMsgClientHeartBeat)))
+		_ = c.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientHeartBeat, new(protobuf.CMsgClientHeartBeat)))
 	}
 	c.heartbeat = nil
 }
@@ -389,9 +396,7 @@ func (c *Client) HandleChannelEncryptRequest(packet *protocol.Packet) error {
 	payload.WriteByte(0)
 	payload.WriteByte(0)
 
-	c.Send(protocol.NewMsg(steamlang.NewMsgChannelEncryptResponse(), payload.Bytes()))
-
-	return nil
+	return c.Send(protocol.NewMsg(steamlang.NewMsgChannelEncryptResponse(), payload.Bytes()))
 }
 
 func (c *Client) HandleChannelEncryptResult(packet *protocol.Packet) error {

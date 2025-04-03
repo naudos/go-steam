@@ -55,11 +55,11 @@ func (s *Social) GetPersonaName() string {
 }
 
 // Sets the local user's persona name and broadcasts it over the network
-func (s *Social) SetPersonaName(name string) {
+func (s *Social) SetPersonaName(name string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.name = name
-	s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientChangeStatus, &protobuf.CMsgClientChangeStatus{
+	return s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientChangeStatus, &protobuf.CMsgClientChangeStatus{
 		PersonaState: proto.Uint32(uint32(s.personaState)),
 		PlayerName:   proto.String(name),
 	}))
@@ -73,20 +73,20 @@ func (s *Social) GetPersonaState() steamlang.EPersonaState {
 }
 
 // Sets the local user's persona state and broadcasts it over the network
-func (s *Social) SetPersonaState(state steamlang.EPersonaState) {
+func (s *Social) SetPersonaState(state steamlang.EPersonaState) error {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
 	s.personaState = state
-	s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientChangeStatus, &protobuf.CMsgClientChangeStatus{
+	s.mutex.Unlock()
+	return s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientChangeStatus, &protobuf.CMsgClientChangeStatus{
 		PersonaState: proto.Uint32(uint32(state)),
 	}))
 }
 
 // Sends a chat message to ether a room or friend
-func (s *Social) SendMessage(to steamid.SteamId, entryType steamlang.EChatEntryType, message string) {
+func (s *Social) SendMessage(to steamid.SteamId, entryType steamlang.EChatEntryType, message string) error {
 	// Friend
 	if to.GetAccountType() == int32(steamlang.EAccountType_Individual) || to.GetAccountType() == int32(steamlang.EAccountType_ConsoleUser) {
-		s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientFriendMsg, &protobuf.CMsgClientFriendMsg{
+		return s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientFriendMsg, &protobuf.CMsgClientFriendMsg{
 			Steamid:       proto.Uint64(to.ToUint64()),
 			ChatEntryType: proto.Int32(int32(entryType)),
 			Message:       []byte(message),
@@ -94,36 +94,38 @@ func (s *Social) SendMessage(to steamid.SteamId, entryType steamlang.EChatEntryT
 		// Chat room
 	} else if to.GetAccountType() == int32(steamlang.EAccountType_Clan) || to.GetAccountType() == int32(steamlang.EAccountType_Chat) {
 		chatId := to.ClanToChat()
-		s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatMsg{
+		return s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatMsg{
 			ChatMsgType:     entryType,
 			SteamIdChatRoom: chatId,
 			SteamIdChatter:  s.client.SteamId(),
 		}, []byte(message)))
 	}
+
+	return nil
 }
 
 // Adds a friend to your friends list or accepts a friend. You'll receive a FriendStateEvent
 // for every new/changed friend
-func (s *Social) AddFriend(id steamid.SteamId) {
-	s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientAddFriend, &protobuf.CMsgClientAddFriend{
+func (s *Social) AddFriend(id steamid.SteamId) error {
+	return s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientAddFriend, &protobuf.CMsgClientAddFriend{
 		SteamidToAdd: proto.Uint64(id.ToUint64()),
 	}))
 }
 
 // Removes a friend from your friends list
-func (s *Social) RemoveFriend(id steamid.SteamId) {
-	s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientRemoveFriend, &protobuf.CMsgClientRemoveFriend{
+func (s *Social) RemoveFriend(id steamid.SteamId) error {
+	return s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientRemoveFriend, &protobuf.CMsgClientRemoveFriend{
 		Friendid: proto.Uint64(id.ToUint64()),
 	}))
 }
 
 // Ignores or unignores a friend on Steam
-func (s *Social) IgnoreFriend(id steamid.SteamId, setIgnore bool) {
+func (s *Social) IgnoreFriend(id steamid.SteamId, setIgnore bool) error {
 	ignore := uint8(1) // True
 	if !setIgnore {
 		ignore = uint8(0) // False
 	}
-	s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientSetIgnoreFriend{
+	return s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientSetIgnoreFriend{
 		MySteamId:     s.client.SteamId(),
 		SteamIdFriend: id,
 		Ignore:        ignore,
@@ -131,59 +133,59 @@ func (s *Social) IgnoreFriend(id steamid.SteamId, setIgnore bool) {
 }
 
 // Requests persona state for a list of specified SteamIds
-func (s *Social) RequestFriendListInfo(ids []steamid.SteamId, requestedInfo steamlang.EClientPersonaStateFlag) {
+func (s *Social) RequestFriendListInfo(ids []steamid.SteamId, requestedInfo steamlang.EClientPersonaStateFlag) error {
 	var friends []uint64
 	for _, id := range ids {
 		friends = append(friends, id.ToUint64())
 	}
-	s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientRequestFriendData, &protobuf.CMsgClientRequestFriendData{
+	return s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientRequestFriendData, &protobuf.CMsgClientRequestFriendData{
 		PersonaStateRequested: proto.Uint32(uint32(requestedInfo)),
 		Friends:               friends,
 	}))
 }
 
 // Requests persona state for a specified SteamId
-func (s *Social) RequestFriendInfo(id steamid.SteamId, requestedInfo steamlang.EClientPersonaStateFlag) {
-	s.RequestFriendListInfo([]steamid.SteamId{id}, requestedInfo)
+func (s *Social) RequestFriendInfo(id steamid.SteamId, requestedInfo steamlang.EClientPersonaStateFlag) error {
+	return s.RequestFriendListInfo([]steamid.SteamId{id}, requestedInfo)
 }
 
 // Requests profile information for a specified SteamId
-func (s *Social) RequestProfileInfo(id steamid.SteamId) {
-	s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientFriendProfileInfo, &protobuf.CMsgClientFriendProfileInfo{
+func (s *Social) RequestProfileInfo(id steamid.SteamId) error {
+	return s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientFriendProfileInfo, &protobuf.CMsgClientFriendProfileInfo{
 		SteamidFriend: proto.Uint64(id.ToUint64()),
 	}))
 }
 
 // Requests all offline messages and marks them as read
-func (s *Social) RequestOfflineMessages() {
-	s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientChatGetFriendMessageHistoryForOfflineMessages, &protobuf.CMsgClientChatGetFriendMessageHistoryForOfflineMessages{}))
+func (s *Social) RequestOfflineMessages() error {
+	return s.client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientChatGetFriendMessageHistoryForOfflineMessages, &protobuf.CMsgClientChatGetFriendMessageHistoryForOfflineMessages{}))
 }
 
 // Attempts to join a chat room
-func (s *Social) JoinChat(id steamid.SteamId) {
+func (s *Social) JoinChat(id steamid.SteamId) error {
 	chatId := id.ClanToChat()
-	s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientJoinChat{
+	return s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientJoinChat{
 		SteamIdChat: chatId,
 	}, make([]byte, 0)))
 }
 
 // Attempts to leave a chat room
-func (s *Social) LeaveChat(id steamid.SteamId) {
+func (s *Social) LeaveChat(id steamid.SteamId) error {
 	chatId := id.ClanToChat()
 	payload := new(bytes.Buffer)
 	binary.Write(payload, binary.LittleEndian, s.client.SteamId().ToUint64())                 // ChatterActedOn
 	binary.Write(payload, binary.LittleEndian, uint32(steamlang.EChatMemberStateChange_Left)) // StateChange
 	binary.Write(payload, binary.LittleEndian, s.client.SteamId().ToUint64())                 // ChatterActedBy
-	s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatMemberInfo{
+	return s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatMemberInfo{
 		SteamIdChat: chatId,
 		Type:        steamlang.EChatInfoType_StateChange,
 	}, payload.Bytes()))
 }
 
 // Kicks the specified chat member from the given chat room
-func (s *Social) KickChatMember(room steamid.SteamId, user steamid.SteamId) {
+func (s *Social) KickChatMember(room steamid.SteamId, user steamid.SteamId) error {
 	chatId := room.ClanToChat()
-	s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatAction{
+	return s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatAction{
 		SteamIdChat:        chatId,
 		SteamIdUserToActOn: user,
 		ChatAction:         steamlang.EChatAction_Kick,
@@ -191,9 +193,9 @@ func (s *Social) KickChatMember(room steamid.SteamId, user steamid.SteamId) {
 }
 
 // Bans the specified chat member from the given chat room
-func (s *Social) BanChatMember(room steamid.SteamId, user steamid.SteamId) {
+func (s *Social) BanChatMember(room steamid.SteamId, user steamid.SteamId) error {
 	chatId := room.ClanToChat()
-	s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatAction{
+	return s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatAction{
 		SteamIdChat:        chatId,
 		SteamIdUserToActOn: user,
 		ChatAction:         steamlang.EChatAction_Ban,
@@ -201,9 +203,9 @@ func (s *Social) BanChatMember(room steamid.SteamId, user steamid.SteamId) {
 }
 
 // Unbans the specified chat member from the given chat room
-func (s *Social) UnbanChatMember(room steamid.SteamId, user steamid.SteamId) {
+func (s *Social) UnbanChatMember(room steamid.SteamId, user steamid.SteamId) error {
 	chatId := room.ClanToChat()
-	s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatAction{
+	return s.client.Send(protocol.NewClientMsg(&steamlang.MsgClientChatAction{
 		SteamIdChat:        chatId,
 		SteamIdUserToActOn: user,
 		ChatAction:         steamlang.EChatAction_UnBan,

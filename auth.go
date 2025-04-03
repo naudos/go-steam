@@ -72,7 +72,7 @@ type LogOnDetails struct {
 //
 // After the event EMsg_ClientNewLoginKey is received you can use the LoginKey
 // to login instead of using the password.
-func (a *Auth) LogOn(details *LogOnDetails) {
+func (a *Auth) LogOn(details *LogOnDetails) error {
 
 	anonymous := details.Anonymous
 
@@ -138,7 +138,7 @@ func (a *Auth) LogOn(details *LogOnDetails) {
 	logon.SupportsRateLimitResponse = proto.Bool(!anonymous)
 	logon.Steam2TicketRequest = proto.Bool(false)
 
-	a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientLogon, logon))
+	return a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientLogon, logon))
 }
 
 func encryptPasword(pwd string, key *protobuf.CAuthentication_GetPasswordRSAPublicKey_Response) (string, error) {
@@ -199,9 +199,7 @@ func (a *Auth) beginAuthSession(packet *protocol.Packet) error {
 	a.Client.JobHandlers[uint64(jobID)] = a.handleAuthSession
 	a.Client.JobMutex.Unlock()
 
-	a.Client.Send(msg)
-
-	return nil
+	return a.Client.Send(msg)
 }
 
 func (a *Auth) handleAuthSession(packet *protocol.Packet) error {
@@ -263,7 +261,7 @@ func (a *Auth) handleAuthSession(packet *protocol.Packet) error {
 
 }
 
-func (a *Auth) updateAuthSession(code string, codeType protobuf.EAuthSessionGuardType) {
+func (a *Auth) updateAuthSession(code string, codeType protobuf.EAuthSessionGuardType) error {
 
 	req := protobuf.CAuthentication_UpdateAuthSessionWithSteamGuardCode_Request{
 		ClientId: a.authSession.ClientId,
@@ -282,8 +280,7 @@ func (a *Auth) updateAuthSession(code string, codeType protobuf.EAuthSessionGuar
 	a.Client.JobHandlers[uint64(jobID)] = a.handleAuthSessionUpdate
 	a.Client.JobMutex.Unlock()
 
-	a.Client.Send(msg)
-
+	return a.Client.Send(msg)
 }
 
 func (a *Auth) handleAuthSessionUpdate(packet *protocol.Packet) error {
@@ -294,7 +291,7 @@ func (a *Auth) handleAuthSessionUpdate(packet *protocol.Packet) error {
 	return nil
 }
 
-func (a *Auth) pollAuthSession() {
+func (a *Auth) pollAuthSession() error {
 
 	req := protobuf.CAuthentication_PollAuthSessionStatus_Request{
 		ClientId:  a.authSession.ClientId,
@@ -311,8 +308,7 @@ func (a *Auth) pollAuthSession() {
 	a.Client.JobHandlers[uint64(jobID)] = a.handlePollResponse
 	a.Client.JobMutex.Unlock()
 
-	a.Client.Send(msg)
-
+	return a.Client.Send(msg)
 }
 
 func (a *Auth) handlePollResponse(packet *protocol.Packet) error {
@@ -330,11 +326,10 @@ func (a *Auth) handlePollResponse(packet *protocol.Packet) error {
 		a.Details.GuardData = *body.NewGuardData
 	}
 
-	a.LogOn(a.Details)
-	return nil
+	return a.LogOn(a.Details)
 }
 
-func (a *Auth) getRSAKey(accountName string) {
+func (a *Auth) getRSAKey(accountName string) error {
 
 	req := new(protobuf.CAuthentication_GetPasswordRSAPublicKey_Request)
 	req.AccountName = &accountName
@@ -349,10 +344,10 @@ func (a *Auth) getRSAKey(accountName string) {
 	a.Client.JobHandlers[uint64(jobID)] = a.beginAuthSession
 	a.Client.JobMutex.Unlock()
 
-	a.Client.Send(msg)
+	return a.Client.Send(msg)
 }
 
-func (a *Auth) LogOnCredentials(details *LogOnDetails) {
+func (a *Auth) LogOnCredentials(details *LogOnDetails) error {
 
 	if details.Username == "" {
 		panic("Username must be set!")
@@ -364,33 +359,41 @@ func (a *Auth) LogOnCredentials(details *LogOnDetails) {
 	atomic.StoreUint64(&a.Client.steamId, uint64(steamid.NewIdAdv(0, 1, int32(steamlang.EUniverse_Public), int32(steamlang.EAccountType_Individual))))
 
 	hello := &protobuf.CMsgClientHello{ProtocolVersion: proto.Uint32(steamlang.MsgClientLogon_CurrentProtocol)}
-	a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientHello, hello))
+	err := a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientHello, hello))
+	if err != nil {
+		return err
+	}
 
 	time.Sleep(1 * time.Second)
 	a.Details = details
-	a.getRSAKey(details.Username)
+	return a.getRSAKey(details.Username)
 }
 
 func (a *Auth) HandlePacket(packet *protocol.Packet) {
+	var e interface{}
 	switch packet.EMsg {
 	case steamlang.EMsg_ClientLogOnResponse:
 		l, err := a.HandleLogOnResponse(packet)
 		if err != nil {
 			a.Client.Fatalf(err.Error())
-		} else if l.Result != steamlang.EResult_OK {
-			a.Client.Emit(&LogOnFailedEvent{Result: l.Result})
+		} else if e.(LoggedOnEvent).Result != steamlang.EResult_OK {
+			e = &LogOnFailedEvent{Result: e.(LoggedOnEvent).Result}
 		} else {
-			a.Client.Emit(l)
+			e = l
 		}
 	case steamlang.EMsg_ClientNewLoginKey:
-		a.Client.Emit(a.HandleLoginKey(packet))
+		e, _ = a.HandleLoginKey(packet)
 	case steamlang.EMsg_ClientSessionToken:
 	case steamlang.EMsg_ClientLoggedOff:
-		a.Client.Emit(a.HandleLoggedOff(packet))
+		e = a.HandleLoggedOff(packet)
 	case steamlang.EMsg_ClientUpdateMachineAuth:
-		a.Client.Emit(a.HandleUpdateMachineAuth(packet))
+		e, _ = a.HandleUpdateMachineAuth(packet)
 	case steamlang.EMsg_ClientAccountInfo:
-		a.Client.Emit(a.HandleAccountInfo(packet))
+		e = a.HandleAccountInfo(packet)
+	}
+
+	if e != nil {
+		a.Client.Emit(e)
 	}
 }
 
@@ -410,10 +413,9 @@ func (a *Auth) HandleLogOnResponse(packet *protocol.Packet) (*LoggedOnEvent, err
 			a.Client.Web.webLoginKey = *body.WebapiAuthenticateUserNonce
 		}
 
-		go a.Client.heartbeatLoop(time.Duration(body.GetHeartbeatSeconds()))
-		//if !a.Client.manual {
-		//	go a.Client.heartbeatLoop(time.Duration(body.GetHeartbeatSeconds()))
-		//}
+		if !a.Client.manual {
+			go a.Client.heartbeatLoop(time.Duration(body.GetHeartbeatSeconds()))
+		}
 
 		return &LoggedOnEvent{
 			Result:                    steamlang.EResult(body.GetEresult()),
@@ -448,16 +450,20 @@ func (a *Auth) HandleLogOnResponse(packet *protocol.Packet) (*LoggedOnEvent, err
 	return &LoggedOnEvent{Result: result}, nil
 }
 
-func (a *Auth) HandleLoginKey(packet *protocol.Packet) *LoginKeyEvent {
+func (a *Auth) HandleLoginKey(packet *protocol.Packet) (*LoginKeyEvent, error) {
 	body := new(protobuf.CMsgClientNewLoginKey)
 	packet.ReadProtoMsg(body)
-	a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientNewLoginKeyAccepted, &protobuf.CMsgClientNewLoginKeyAccepted{
+	err := a.Client.Send(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientNewLoginKeyAccepted, &protobuf.CMsgClientNewLoginKeyAccepted{
 		UniqueId: proto.Uint32(body.GetUniqueId()),
 	}))
+	if err != nil {
+		return nil, err
+	}
+
 	return &LoginKeyEvent{
 		UniqueId: body.GetUniqueId(),
 		LoginKey: body.GetLoginKey(),
-	}
+	}, nil
 }
 
 func (a *Auth) HandleLoggedOff(packet *protocol.Packet) *LoggedOffEvent {
@@ -476,7 +482,7 @@ func (a *Auth) HandleLoggedOff(packet *protocol.Packet) *LoggedOffEvent {
 	return &LoggedOffEvent{Result: result, MinReconnect: min}
 }
 
-func (a *Auth) HandleUpdateMachineAuth(packet *protocol.Packet) *MachineAuthUpdateEvent {
+func (a *Auth) HandleUpdateMachineAuth(packet *protocol.Packet) (*MachineAuthUpdateEvent, error) {
 	body := new(protobuf.CMsgClientUpdateMachineAuth)
 	packet.ReadProtoMsg(body)
 	hash := sha1.New()
@@ -487,9 +493,12 @@ func (a *Auth) HandleUpdateMachineAuth(packet *protocol.Packet) *MachineAuthUpda
 		ShaFile: sha,
 	})
 	msg.SetTargetJobId(packet.SourceJobId)
-	a.Client.Send(msg)
+	err := a.Client.Send(msg)
+	if err != nil {
+		return nil, err
+	}
 
-	return &MachineAuthUpdateEvent{sha}
+	return &MachineAuthUpdateEvent{sha}, nil
 }
 
 func (a *Auth) HandleAccountInfo(packet *protocol.Packet) *AccountInfoEvent {

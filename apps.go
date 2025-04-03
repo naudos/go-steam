@@ -6,7 +6,7 @@ import (
 	"github.com/0xAozora/go-steam/protocol/steamlang"
 )
 
-func (c *Client) GetProductInfo(appID uint32) *protobuf.CMsgClientPICSProductInfoResponse {
+func (c *Client) GetProductInfo(appID uint32) (*protobuf.CMsgClientPICSProductInfoResponse, error) {
 
 	req := &protobuf.CMsgClientPICSProductInfoRequest{
 		Apps: []*protobuf.CMsgClientPICSProductInfoRequest_AppInfo{
@@ -31,6 +31,12 @@ func (c *Client) GetProductInfo(appID uint32) *protobuf.CMsgClientPICSProductInf
 	}
 	c.JobMutex.Unlock()
 
-	c.Send(msg)
-	return <-ch
+	err := c.Send(msg)
+	if err != nil {
+		c.JobMutex.Lock()
+		delete(c.JobHandlers, uint64(jobID))
+		c.JobMutex.Unlock()
+		return nil, err
+	}
+	return <-ch, nil
 }
