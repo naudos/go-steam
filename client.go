@@ -209,6 +209,12 @@ func (c *Client) ConnectToBind(addr *netutil.PortAddr, local *net.TCPAddr) error
 }
 
 func (c *Client) Disconnect() {
+
+	if c.Connected() {
+		_ = c.Write(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientLogOff, new(protobuf.CMsgClientLogOff)))
+		time.Sleep(time.Second * 3)
+	}
+
 	c.mutex.Lock()
 
 	if c.Conn == nil {
