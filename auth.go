@@ -364,7 +364,6 @@ func (a *Auth) LogOnCredentials(details *LogOnDetails) error {
 		return err
 	}
 
-	time.Sleep(1 * time.Second)
 	a.Details = details
 	return a.getRSAKey(details.Username)
 }

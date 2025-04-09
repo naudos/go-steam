@@ -212,7 +212,6 @@ func (c *Client) Disconnect() {
 
 	if c.Connected() {
 		_ = c.Write(protocol.NewClientMsgProtobuf(steamlang.EMsg_ClientLogOff, new(protobuf.CMsgClientLogOff)))
-		time.Sleep(time.Second * 3)
 	}
 
 	c.mutex.Lock()
@@ -260,6 +259,12 @@ func (c *Client) Write(msg protocol.IMsg) error {
 	c.mutex.RUnlock()
 	if conn == nil {
 		return nil
+	}
+
+	// Since we aren't writing sequentially we need to lock here for the writeBuffer, don't know why, since you can write to the client directly
+	if c.manual {
+		c.mutex.Lock()
+		defer c.mutex.Unlock()
 	}
 
 	if cm, ok := msg.(protocol.IClientMsg); ok {
