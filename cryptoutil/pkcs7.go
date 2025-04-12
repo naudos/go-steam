@@ -7,10 +7,17 @@ import (
 
 // Returns a new byte array padded with PKCS7 and prepended
 // with empty space of the AES block size (16 bytes) for the IV.
-func padPKCS7WithIV(src []byte) []byte {
+func padPKCS7WithIV(dest, src []byte) []byte {
 	missing := aes.BlockSize - (len(src) % aes.BlockSize)
 	newSize := len(src) + aes.BlockSize + missing
-	dest := make([]byte, newSize, newSize)
+
+	// Check if dest actually has the capacity to avoid allocating new slice
+	if cap(dest) >= newSize {
+		dest = dest[:newSize]
+	} else {
+		dest = make([]byte, newSize)
+	}
+
 	copy(dest[aes.BlockSize:], src)
 
 	padding := byte(missing)

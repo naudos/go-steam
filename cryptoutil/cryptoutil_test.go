@@ -12,7 +12,7 @@ func TestCrypt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encrypted := SymmetricEncrypt(ciph, src)
+	encrypted := SymmetricEncrypt(ciph, nil, src)
 	if len(encrypted)%aes.BlockSize != 0 {
 		t.Fatalf("Encrypted text is not a multiple of the AES block size (got %v)", len(encrypted))
 	}

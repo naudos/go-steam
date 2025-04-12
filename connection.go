@@ -14,6 +14,7 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+// This interface exists to allow for different connection types (TCP, UDP, WebSocket??), however only TCP is implemented right now.
 type connection interface {
 	Read() (*protocol.Packet, error)
 	Write([]byte) error
@@ -50,23 +51,24 @@ func dialTCP(laddr, raddr *net.TCPAddr, proxy proxy.Dialer) (*tcpConnection, err
 }
 
 func (c *tcpConnection) Read() (*protocol.Packet, error) {
-	// All packets begin with a packet length
-	var packetLen uint32
-	err := binary.Read(c.conn, binary.LittleEndian, &packetLen)
+
+	// All packets begin with a packet length and a magic value
+	var b []byte = make([]byte, 8)
+	n, err := c.conn.Read(b)
 	if err != nil {
 		return nil, err
+	}
+	if n != 8 {
+		return nil, fmt.Errorf("Expected 8 bytes, got %d", n)
 	}
 
-	// A magic value follows for validation
-	var packetMagic uint32
-	err = binary.Read(c.conn, binary.LittleEndian, &packetMagic)
-	if err != nil {
-		return nil, err
-	}
+	// Check magic value first to validate the connection
+	packetMagic := binary.LittleEndian.Uint32(b[4:])
 	if packetMagic != tcpConnectionMagic {
 		return nil, fmt.Errorf("Invalid connection magic! Expected %d, got %d!", tcpConnectionMagic, packetMagic)
 	}
 
+	packetLen := binary.LittleEndian.Uint32(b)
 	buf := make([]byte, packetLen)
 	_, err = io.ReadFull(c.conn, buf)
 	if err == io.ErrUnexpectedEOF {
@@ -91,23 +93,34 @@ func (c *tcpConnection) Read() (*protocol.Packet, error) {
 }
 
 // Writes a message. This may only be used by one goroutine at a time.
+// Reuses message slice if possible, otherwise allocates a new one.
 func (c *tcpConnection) Write(message []byte) error {
+
+	// Allocate a new slice for the whole payload to avoid packet splitting
+	// and to avoid copying the message multiple times when encrypting.
+	size := len(message)
+	var payload []byte
+
 	c.cipherMutex.RLock()
 	if c.ciph != nil {
-		message = cryptoutil.SymmetricEncrypt(c.ciph, message)
+		// Payload contains the length of the message, the magic value and the message itself.
+		// Message is padded to the next AES block size + AES block size for the IV.
+		// So we need to allocate a new slice larger enough.
+		missing := aes.BlockSize - (size % aes.BlockSize)
+		size += aes.BlockSize + missing
+		payload = checkReuseSlice(message, size+8)
+		_ = cryptoutil.SymmetricEncrypt(c.ciph, payload[8:], message)
+	} else {
+		// Payload contains the length of the message, the magic value and the message itself.
+		payload = checkReuseSlice(message, size+8)
+		copy(payload[8:], message)
 	}
 	c.cipherMutex.RUnlock()
 
-	err := binary.Write(c.conn, binary.LittleEndian, uint32(len(message)))
-	if err != nil {
-		return err
-	}
-	err = binary.Write(c.conn, binary.LittleEndian, tcpConnectionMagic)
-	if err != nil {
-		return err
-	}
+	binary.LittleEndian.PutUint32(payload, uint32(size))
+	binary.LittleEndian.PutUint32(payload[4:], tcpConnectionMagic)
 
-	_, err = c.conn.Write(message)
+	_, err := c.conn.Write(payload)
 	return err
 }
 
@@ -137,4 +150,14 @@ func (c *tcpConnection) IsEncrypted() bool {
 	c.cipherMutex.RLock()
 	defer c.cipherMutex.RUnlock()
 	return c.ciph != nil
+}
+
+// checkReuseSlice checks if the slice has enough capacity to hold the new size.
+// If it does, it returns the slice with the new size.
+// If it doesn't, it allocates a new slice with the new size.
+func checkReuseSlice(s []byte, size int) []byte {
+	if cap(s) >= size {
+		return s[:size]
+	}
+	return make([]byte, size)
 }

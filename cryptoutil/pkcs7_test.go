@@ -7,7 +7,7 @@ import (
 
 func TestPKCS7Pad(t *testing.T) {
 	in := []byte("123456789012345678901234567890")
-	out := padPKCS7WithIV(in)
+	out := padPKCS7WithIV(nil, in)
 	if len(out) != 32+aes.BlockSize {
 		t.Fatalf("Invalid output size, expected 48 and got %v", len(out))
 	}
