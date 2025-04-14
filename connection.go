@@ -26,7 +26,7 @@ type connection interface {
 const tcpConnectionMagic uint32 = 0x31305456 // "VT01"
 
 type tcpConnection struct {
-	conn        *net.TCPConn
+	conn        net.Conn
 	ciph        cipher.Block
 	cipherMutex sync.RWMutex
 }
@@ -46,7 +46,7 @@ func dialTCP(laddr, raddr *net.TCPAddr, proxy proxy.Dialer) (*tcpConnection, err
 	}
 
 	return &tcpConnection{
-		conn: conn.(*net.TCPConn),
+		conn: conn,
 	}, nil
 }
 
