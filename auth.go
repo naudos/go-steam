@@ -217,10 +217,7 @@ func (a *Auth) handleAuthSession(packet *protocol.Packet) error {
 		switch *confirmation.ConfirmationType {
 
 		case protobuf.EAuthSessionGuardType_k_EAuthSessionGuardType_None:
-
-			a.pollAuthSession()
-			return nil
-
+			return a.pollAuthSession()
 		case protobuf.EAuthSessionGuardType_k_EAuthSessionGuardType_EmailCode:
 			codeType = protobuf.EAuthSessionGuardType_k_EAuthSessionGuardType_EmailCode
 			fallthrough
