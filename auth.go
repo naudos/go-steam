@@ -29,7 +29,7 @@ type Auth struct {
 
 // Custom Authenticator
 type Authenticator interface {
-	GetCode(protobuf.EAuthSessionGuardType) string
+	GetCode(protobuf.EAuthSessionGuardType, func(string, protobuf.EAuthSessionGuardType) error) error
 }
 
 type SentryHash []byte
@@ -229,17 +229,14 @@ func (a *Auth) handleAuthSession(packet *protocol.Packet) error {
 				codeType = protobuf.EAuthSessionGuardType_k_EAuthSessionGuardType_DeviceCode
 			}
 
+			if a.Authenticator != nil {
+				return a.Authenticator.GetCode(codeType, a.updateAuthSession)
+			}
+
 			go func() {
 				var code string
-				if a.Authenticator != nil {
-					code = a.Authenticator.GetCode(codeType)
-					if code == "" {
-						return // Do nothing
-					}
-				} else {
-					fmt.Println("Enter Code:")
-					_, _ = fmt.Scanln(&code)
-				}
+				fmt.Println("Enter Code:")
+				_, _ = fmt.Scanln(&code)
 				a.updateAuthSession(code, codeType)
 			}()
 
